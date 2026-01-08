@@ -238,6 +238,11 @@
     .transcript-content::-webkit-scrollbar-thumb:hover {
       background: #555;
     }
+
+    [contenteditable="true"]:focus {
+      outline: 2px solid #667eea;
+      background: white;
+    }
   </style>
 </head>
 <body>
@@ -253,6 +258,7 @@
         aria-label="YouTube URL"
       >
       <button id="fetchBtn" onclick="fetchTranscript()">Get Transcript</button>
+      <button id="manualBtn" onclick="enableManualInput()" style="background: #48bb78;">Manual Input</button>
     </div>
 
     <div class="loading" id="loading">
@@ -468,6 +474,31 @@
 
       summaryContent.innerHTML = formattedHTML;
       summaryContainer.classList.add('active');
+    }
+
+    function enableManualInput() {
+      // Reset UI
+      hideError();
+      hideLoading();
+      
+      // Reset and show transcript container
+      transcriptContent.textContent = '';
+      transcriptContainer.classList.add('active');
+      summaryContainer.classList.remove('active');
+      
+      // Make editable
+      transcriptContent.contentEditable = "true";
+      transcriptContent.focus();
+      
+      // Add a temporary placeholder effect if empty
+      transcriptContent.setAttribute('placeholder', 'Paste your transcript here...');
+    }
+
+    // Ensure fetching disables edit mode
+    const originalShowTranscript = showTranscript;
+    showTranscript = function(text) {
+      transcriptContent.contentEditable = "false";
+      originalShowTranscript(text);
     }
   </script>
 </body>
