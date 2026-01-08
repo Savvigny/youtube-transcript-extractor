@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm search:*)",
+      "Bash(python3:*)",
+      "WebFetch(domain:docs.anthropic.com)"
+    ]
+  },
+  "tools": {
+    "sandbox": true
+  }
+}
