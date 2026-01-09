@@ -9,6 +9,11 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const app = express();
 const PORT = 3000;
 
+// Model configuration
+const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+const GEMINI_PRIMARY_MODEL = 'gemini-2.5-flash';
+const GEMINI_FALLBACK_MODEL = 'gemini-3-flash-preview';
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
@@ -22,6 +27,39 @@ const anthropic = new Anthropic({
 const geminiApiKey = process.env.GEMINI_API_KEY;
 console.log('Gemini API Key present:', !!geminiApiKey);
 const genAI = new GoogleGenerativeAI(geminiApiKey);
+
+// Shared summarization configuration
+const SUMMARIZER_SYSTEM_PROMPT = `You are an expert technical summarizer specializing in YouTube video transcripts. Your task is to create a comprehensive, well-structured summary that captures all key information while maintaining clarity and readability.
+
+When summarizing:
+- Use clear, professional language
+- Organize content into logical paragraphs
+- Include all major topics and insights
+- Maintain context and relationships between ideas
+- Avoid bullet points; use paragraph format exclusively
+- Aim for completeness while being concise`;
+
+function getTargetWordCount(transcript) {
+  const wordCount = transcript.split(/\s+/).length;
+  if (wordCount < 500) {
+    return '200-300';
+  }
+  if (wordCount < 2000) {
+    return '2000';
+  }
+  return '3000';
+}
+
+function buildSummaryPrompt(transcript) {
+  const targetWords = getTargetWordCount(transcript);
+  return `${SUMMARIZER_SYSTEM_PROMPT}
+
+IMPORTANT: Your summary must NOT exceed ${targetWords} words. This is a strict maximum word count limit.
+
+Please summarize the following YouTube video transcript:
+
+${transcript}`;
+}
 
 function extractVideoId(url) {
   const patterns = [
@@ -115,31 +153,13 @@ app.post('/api/summarize', async (req, res) => {
 
     console.log('Calling Claude API...');
 
-    // Determine target word count based on transcript length
-    const transcriptLength = transcript.split(/\s+/).length;
-    let targetWords;
-    if (transcriptLength < 500) {
-      targetWords = '200-300';
-    } else if (transcriptLength < 2000) {
-      targetWords = '2000';
-    } else {
-      targetWords = '3000';
-    }
+    const targetWords = getTargetWordCount(transcript);
 
-    // Call Claude API for summarization
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: CLAUDE_MODEL,
       max_tokens: 8000,
       temperature: 0.5,
-      system: `You are an expert technical summarizer specializing in YouTube video transcripts. Your task is to create a comprehensive, well-structured summary that captures all key information while maintaining clarity and readability.
-
-When summarizing:
-- Use clear, professional language
-- Organize content into logical paragraphs
-- Include all major topics and insights
-- Maintain context and relationships between ideas
-- Avoid bullet points; use paragraph format exclusively
-- Aim for completeness while being concise
+      system: `${SUMMARIZER_SYSTEM_PROMPT}
 
 IMPORTANT: Your summary must NOT exceed ${targetWords} words. This is a strict maximum word count limit.`,
       messages: [
@@ -184,13 +204,20 @@ IMPORTANT: Your summary must NOT exceed ${targetWords} words. This is a strict m
   }
 });
 
+async function generateGeminiSummary(transcript, modelName) {
+  const model = genAI.getGenerativeModel({ model: modelName });
+  const prompt = buildSummaryPrompt(transcript);
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  return response.text();
+}
+
 app.post('/api/summarize-gemini', async (req, res) => {
   try {
     const { transcript } = req.body;
 
     console.log('Received Gemini summarize request, transcript length:', transcript?.length);
 
-    // Validate input
     if (!transcript) {
       return res.status(400).json({ error: 'Transcript field is required' });
     }
@@ -199,45 +226,13 @@ app.post('/api/summarize-gemini', async (req, res) => {
       return res.status(400).json({ error: 'Transcript cannot be empty' });
     }
 
-    // Check for API key
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: 'Gemini API key not configured' });
     }
 
-    console.log('Calling Gemini API with model: gemini-2.0-flash-lite');
+    console.log('Calling Gemini API with model:', GEMINI_PRIMARY_MODEL);
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-    // Determine target word count based on transcript length
-    const transcriptLength = transcript.split(/\s+/).length;
-    let targetWords;
-    if (transcriptLength < 500) {
-      targetWords = '200-300';
-    } else if (transcriptLength < 2000) {
-      targetWords = '2000';
-    } else {
-      targetWords = '3000';
-    }
-
-    const prompt = `You are an expert technical summarizer specializing in YouTube video transcripts. Your task is to create a comprehensive, well-structured summary that captures all key information while maintaining clarity and readability.
-
-When summarizing:
-- Use clear, professional language
-- Organize content into logical paragraphs
-- Include all major topics and insights
-- Maintain context and relationships between ideas
-- Avoid bullet points; use paragraph format exclusively
-- Aim for completeness while being concise
-
-IMPORTANT: Your summary must NOT exceed ${targetWords} words. This is a strict maximum word count limit.
-
-Please summarize the following YouTube video transcript:
-
-${transcript}`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const summary = response.text();
+    const summary = await generateGeminiSummary(transcript, GEMINI_PRIMARY_MODEL);
 
     console.log('Gemini API response received, summary length:', summary.length);
 
@@ -249,56 +244,21 @@ ${transcript}`;
   } catch (error) {
     console.error('Error generating Gemini summary:', error);
 
-    // Plan B: Fallback for Rate Limiting (429)
     if (error.status === 429) {
       try {
-        console.log('Gemini 2.5 rate limit hit. Switching to Plan B: gemini-3-flash-preview');
-        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-        
-        // Retrieve transcript from request body again
+        console.log('Gemini rate limit hit. Switching to fallback:', GEMINI_FALLBACK_MODEL);
         const { transcript } = req.body;
-        
-        // Re-calculate target words
-        const transcriptLength = transcript.split(/\s+/).length;
-        let targetWords;
-        if (transcriptLength < 500) {
-          targetWords = '200-300';
-        } else if (transcriptLength < 2000) {
-          targetWords = '2000';
-        } else {
-          targetWords = '3000';
-        }
+        const summary = await generateGeminiSummary(transcript, GEMINI_FALLBACK_MODEL);
 
-        const prompt = `You are an expert technical summarizer specializing in YouTube video transcripts. Your task is to create a comprehensive, well-structured summary that captures all key information while maintaining clarity and readability.
+        console.log('Fallback successful. Summary length:', summary.length);
 
-When summarizing:
-- Use clear, professional language
-- Organize content into logical paragraphs
-- Include all major topics and insights
-- Maintain context and relationships between ideas
-- Avoid bullet points; use paragraph format exclusively
-- Aim for completeness while being concise
-
-IMPORTANT: Your summary must NOT exceed ${targetWords} words. This is a strict maximum word count limit.
-
-Please summarize the following YouTube video transcript:
-
-${transcript}`;
-
-        const result = await fallbackModel.generateContent(prompt);
-        const response = await result.response;
-        const summary = response.text();
-        
-        console.log('Fallback Plan B successful. Summary length:', summary.length);
-        
         return res.json({
           success: true,
           summary: summary
         });
-        
+
       } catch (fallbackError) {
-        console.error('Plan B failed:', fallbackError);
-        // If fallback fails, proceed to standard error handling below
+        console.error('Fallback failed:', fallbackError);
       }
     }
 

@@ -383,7 +383,7 @@
       }
     }
 
-    async function summarizeTranscript() {
+    async function summarizeWithProvider(endpoint, button, buttonLabel, errorPrefix) {
       const transcript = transcriptContent.textContent;
 
       if (!transcript) {
@@ -391,53 +391,14 @@
         return;
       }
 
-      summarizeBtn.disabled = true;
-      summarizeBtn.textContent = 'Summarizing...';
+      button.disabled = true;
+      button.textContent = 'Summarizing...';
       hideError();
 
       try {
-        const response = await fetch('/api/summarize', {
+        const response = await fetch(endpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ transcript })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to generate summary');
-        }
-
-        displaySummary(data.summary);
-
-      } catch (err) {
-        showError('Summarization failed: ' + err.message);
-      } finally {
-        summarizeBtn.disabled = false;
-        summarizeBtn.textContent = 'Summarize';
-      }
-    }
-
-    async function summarizeTranscriptGemini() {
-      const transcript = transcriptContent.textContent;
-
-      if (!transcript) {
-        showError('No transcript available to summarize');
-        return;
-      }
-
-      summarizeGeminiBtn.disabled = true;
-      summarizeGeminiBtn.textContent = 'Summarizing (Gemini)...';
-      hideError();
-
-      try {
-        const response = await fetch('/api/summarize-gemini', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ transcript })
         });
 
@@ -445,7 +406,6 @@
         try {
           data = await response.json();
         } catch (e) {
-          // If JSON parse fails, use status text
           if (!response.ok) {
             throw new Error(`Server error: ${response.status} ${response.statusText}`);
           }
@@ -458,11 +418,19 @@
         displaySummary(data.summary);
 
       } catch (err) {
-        showError('Gemini Summarization failed: ' + err.message);
+        showError(errorPrefix + err.message);
       } finally {
-        summarizeGeminiBtn.disabled = false;
-        summarizeGeminiBtn.textContent = 'Summarize (Gemini)';
+        button.disabled = false;
+        button.textContent = buttonLabel;
       }
+    }
+
+    function summarizeTranscript() {
+      summarizeWithProvider('/api/summarize', summarizeBtn, 'Summarize', 'Summarization failed: ');
+    }
+
+    function summarizeTranscriptGemini() {
+      summarizeWithProvider('/api/summarize-gemini', summarizeGeminiBtn, 'Summarize (Gemini)', 'Gemini Summarization failed: ');
     }
 
     function displaySummary(summaryText) {
