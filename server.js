@@ -249,6 +249,59 @@ ${transcript}`;
   } catch (error) {
     console.error('Error generating Gemini summary:', error);
 
+    // Plan B: Fallback for Rate Limiting (429)
+    if (error.status === 429) {
+      try {
+        console.log('Gemini 2.5 rate limit hit. Switching to Plan B: gemini-3-flash-preview');
+        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        
+        // Retrieve transcript from request body again
+        const { transcript } = req.body;
+        
+        // Re-calculate target words
+        const transcriptLength = transcript.split(/\s+/).length;
+        let targetWords;
+        if (transcriptLength < 500) {
+          targetWords = '200-300';
+        } else if (transcriptLength < 2000) {
+          targetWords = '2000';
+        } else {
+          targetWords = '3000';
+        }
+
+        const prompt = `You are an expert technical summarizer specializing in YouTube video transcripts. Your task is to create a comprehensive, well-structured summary that captures all key information while maintaining clarity and readability.
+
+When summarizing:
+- Use clear, professional language
+- Organize content into logical paragraphs
+- Include all major topics and insights
+- Maintain context and relationships between ideas
+- Avoid bullet points; use paragraph format exclusively
+- Aim for completeness while being concise
+
+IMPORTANT: Your summary must NOT exceed ${targetWords} words. This is a strict maximum word count limit.
+
+Please summarize the following YouTube video transcript:
+
+${transcript}`;
+
+        const result = await fallbackModel.generateContent(prompt);
+        const response = await result.response;
+        const summary = response.text();
+        
+        console.log('Fallback Plan B successful. Summary length:', summary.length);
+        
+        return res.json({
+          success: true,
+          summary: summary
+        });
+        
+      } catch (fallbackError) {
+        console.error('Plan B failed:', fallbackError);
+        // If fallback fails, proceed to standard error handling below
+      }
+    }
+
     if (error.status) {
       return res.status(error.status).json({ error: error.message || 'Gemini API Error' });
     }
