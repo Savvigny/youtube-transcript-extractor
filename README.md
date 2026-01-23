@@ -5,6 +5,7 @@ A simple web application that extracts automated transcripts from YouTube videos
 ## Features
 
 - Extract transcripts from any YouTube video with automated captions
+- **AI-powered summarization** via Claude or Gemini (requires API keys)
 - Clean, simple user interface
 - Automatic video ID extraction from various YouTube URL formats
 - Error handling for edge cases (no captions, invalid URLs, etc.)
@@ -22,6 +23,12 @@ A simple web application that extracts automated transcripts from YouTube videos
 ```bash
 npm install
 ```
+
+2. (Optional) To enable AI summarization, copy `.env.example` to `.env` and add your API keys:
+```bash
+cp .env.example .env
+```
+See `.env.example` for links to obtain API keys.
 
 ## Usage
 
@@ -74,6 +81,14 @@ Fetches the transcript for a YouTube video.
   "error": "Error message"
 }
 ```
+
+### POST /api/summarize
+
+Summarizes a transcript using Claude. Requires `ANTHROPIC_API_KEY`.
+
+### POST /api/summarize-gemini
+
+Summarizes a transcript using Gemini. Requires `GEMINI_API_KEY`.
 
 ## Error Handling
 
