@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube Transcript Extractor</title>
+  <title>Content Extractor & Summarizer</title>
   <style>
     * {
       margin: 0;
@@ -247,17 +247,17 @@
 </head>
 <body>
   <div class="container">
-    <h1>YouTube Transcript Extractor</h1>
-    <p class="subtitle">Paste a YouTube video URL to extract its automated transcript</p>
+    <h1>Content Extractor & Summarizer</h1>
+    <p class="subtitle">Paste a YouTube URL or article link to extract and summarize content</p>
 
     <div class="input-group">
       <input
         type="text"
         id="urlInput"
-        placeholder="https://www.youtube.com/watch?v=..."
-        aria-label="YouTube URL"
+        placeholder="YouTube URL or article link..."
+        aria-label="URL"
       >
-      <button id="fetchBtn" onclick="fetchTranscript()">Get Transcript</button>
+      <button id="fetchBtn" onclick="fetchContent()">Extract</button>
       <button id="manualBtn" onclick="enableManualInput()" style="background: #48bb78;">Manual Input</button>
     </div>
 
@@ -301,15 +301,19 @@
 
     urlInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
-        fetchTranscript();
+        fetchContent();
       }
     });
 
-    async function fetchTranscript() {
+    function isYouTubeUrl(url) {
+      return /(?:youtube\.com|youtu\.be)/.test(url) || /^[a-zA-Z0-9_-]{11}$/.test(url);
+    }
+
+    async function fetchContent() {
       const url = urlInput.value.trim();
 
       if (!url) {
-        showError('Please enter a YouTube URL');
+        showError('Please enter a URL');
         return;
       }
 
@@ -319,14 +323,31 @@
       fetchBtn.disabled = true;
 
       try {
-        const response = await fetch(`/api/transcript?url=${encodeURIComponent(url)}`);
-        const data = await response.json();
+        let response, data;
 
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch transcript');
+        if (isYouTubeUrl(url)) {
+          // YouTube transcript
+          loading.querySelector('p').textContent = 'Fetching transcript...';
+          response = await fetch(`/api/transcript?url=${encodeURIComponent(url)}`);
+          data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error || 'Failed to fetch transcript');
+          }
+
+          showTranscript(data.transcript);
+        } else {
+          // Article extraction
+          loading.querySelector('p').textContent = 'Extracting article...';
+          response = await fetch(`/api/article?url=${encodeURIComponent(url)}`);
+          data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error || 'Failed to fetch article');
+          }
+
+          showTranscript(data.content);
         }
-
-        showTranscript(data.transcript);
       } catch (err) {
         showError(err.message);
       } finally {
