@@ -1,14 +1,31 @@
 #!/usr/bin/env python3
 import sys
 import json
+import warnings
+
+# Suppress urllib3 LibreSSL warnings
+warnings.filterwarnings('ignore', message='urllib3 v2 only supports OpenSSL')
+
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
 
 def get_transcript(video_id):
     try:
-        # Initialize API and fetch transcript
+        # Initialize API
         api = YouTubeTranscriptApi()
-        transcript = api.fetch(video_id, languages=['en'])
+
+        # Try English first, then fall back to any available language
+        try:
+            transcript = api.fetch(video_id, languages=['en', 'en-US', 'en-GB'])
+        except NoTranscriptFound:
+            # Get list of available transcripts and fetch the first one
+            transcript_list = api.list(video_id)
+            available = list(transcript_list)
+            if not available:
+                raise NoTranscriptFound(video_id, ['en'], None)
+            # Fetch the first available transcript
+            transcript = available[0].fetch()
+
         transcript_list = transcript.snippets
 
         # Extract text segments
