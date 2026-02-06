@@ -3,6 +3,7 @@ const express = require('express');
 const { exec } = require('child_process');
 const cors = require('cors');
 const path = require('path');
+const PDFDocument = require('pdfkit');
 const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { Readability } = require('@mozilla/readability');
@@ -336,6 +337,54 @@ app.get('/api/article', async (req, res) => {
   } catch (error) {
     console.error('Error fetching article:', error);
     res.status(500).json({ error: 'Failed to fetch article. Please try again.' });
+  }
+});
+
+app.post('/api/transcript-pdf', (req, res) => {
+  try {
+    const { transcript, title } = req.body || {};
+
+    if (!transcript || typeof transcript !== 'string' || transcript.trim().length === 0) {
+      return res.status(400).json({ error: 'Transcript field is required' });
+    }
+
+    const safeTitle = (title || 'transcript')
+      .replace(/[^a-z0-9\-_ ]/gi, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase() || 'transcript';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.pdf"`);
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margins: {
+        top: 50,
+        bottom: 50,
+        left: 50,
+        right: 50
+      }
+    });
+
+    doc.pipe(res);
+    doc.fontSize(18).text(title || 'Transcript');
+    doc.moveDown(0.4);
+    doc
+      .fontSize(10)
+      .fillColor('#666666')
+      .text(`Generated on ${new Date().toLocaleString()}`);
+    doc.moveDown(1);
+    doc
+      .fontSize(12)
+      .fillColor('#111111')
+      .text(transcript, {
+        lineGap: 4
+      });
+    doc.end();
+  } catch (error) {
+    console.error('Error generating transcript PDF:', error);
+    res.status(500).json({ error: 'Failed to generate transcript PDF' });
   }
 });
 

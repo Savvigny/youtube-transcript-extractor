@@ -272,6 +272,7 @@
         <span>Transcript</span>
         <div class="button-group">
           <button class="copy-btn" id="copyBtn" onclick="copyTranscript()">Copy</button>
+          <button class="copy-btn" id="pdfBtn" onclick="downloadPdf()">Download PDF</button>
           <button class="copy-btn" id="summarizeBtn" onclick="summarizeTranscript()">Summarize</button>
           <button class="copy-btn" id="summarizeGeminiBtn" onclick="summarizeTranscriptGemini()">Summarize (Gemini)</button>
         </div>
@@ -443,6 +444,51 @@
       } finally {
         button.disabled = false;
         button.textContent = buttonLabel;
+      }
+    }
+
+    async function downloadPdf() {
+      const transcript = transcriptContent.textContent;
+      const pdfBtn = document.getElementById('pdfBtn');
+
+      if (!transcript || transcript.trim().length === 0) {
+        showError('No transcript available to export');
+        return;
+      }
+
+      pdfBtn.disabled = true;
+      pdfBtn.textContent = 'Generating...';
+      hideError();
+
+      try {
+        const response = await fetch('/api/transcript-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript,
+            title: urlInput.value.trim() || 'transcript'
+          })
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to generate PDF');
+        }
+
+        const pdfBlob = await response.blob();
+        const blobUrl = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = 'transcript.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (err) {
+        showError(err.message || 'Failed to generate PDF');
+      } finally {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = 'Download PDF';
       }
     }
 
